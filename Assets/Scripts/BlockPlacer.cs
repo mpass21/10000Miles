@@ -6,15 +6,15 @@ public class BlockPlacer : MonoBehaviour
     [Header("Block Settings")]
     public GameObject cubePrefab;
     public GameObject wheelPrefab;
-    public float placeDistance = 10f;
+    public float placeDistance = 25f;
     public float gridSize = 5f; // Grid spacing
 
     [Header("Fallback Preview Position (when not hitting anything)")]
     public Vector3 holdOffset = new Vector3(0f, 27f, 8f); // Offset from character center (X, Y, Z)
 
     [Header("Wheel Settings")]
-    public float wheelHoldForwardOffset = 3f; // Extra forward distance for wheel fallback
-    public float wheelHoldDownOffset = 1.5f;  // Extra downward offset for wheel fallback
+    public float wheelHoldForwardOffset = 10f; // Extra forward distance for wheel fallback
+    public float wheelHoldDownOffset = 5f;  // Extra downward offset for wheel fallback
 
     [Header("Preview")]
     public Material previewMaterial;
