@@ -1,10 +1,9 @@
-using UnityEngine;
+  using UnityEngine;
 using UnityEngine.InputSystem;
 
 public class BlockPlacer : MonoBehaviour
 {
-    [Header("Block Settings")]
-    public GameObject cubePrefab;
+    [Header("Block Settings")]     public GameObject cubePrefab;
     public GameObject wheelPrefab;
     public float placeDistance = 25f;
     public float gridSize = 5f; // Grid spacing
@@ -15,6 +14,9 @@ public class BlockPlacer : MonoBehaviour
     [Header("Wheel Settings")]
     public float wheelHoldForwardOffset = 10f; // Extra forward distance for wheel fallback
     public float wheelHoldDownOffset = 5f;  // Extra downward offset for wheel fallback
+    public float wheelRadius = 2.5f; // Half the height/width of the wheel prefab
+    public float wheelWidth = 2.5f; // Half the width of the wheel (for side face offset)
+    public float wheelHoldScale = 0.5f; // Scale of wheel when holding (not aiming at surface)
 
     [Header("Preview")]
     public Material previewMaterial;
@@ -130,15 +132,49 @@ public class BlockPlacer : MonoBehaviour
 
             if (isWheelMode)
             {
-                // WHEEL MODE: Center snaps to grid multiples of gridSize
-                Vector3 hitPoint = hit.point;
-                hitPoint += hit.normal * 0.01f;
+                Vector3 hitPoint = hit.point + hit.normal * 0.01f;
 
-                targetPos = new Vector3(
-                    Mathf.Round(hitPoint.x / gridSize) * gridSize,
-                    Mathf.Round(hitPoint.y / gridSize) * gridSize,
-                    Mathf.Round(hitPoint.z / gridSize) * gridSize
-                );
+                // Snap position to grid based on surface normal
+                targetPos = hitPoint;
+
+                if (Mathf.Abs(hit.normal.y) > 0.5f)
+                {
+                    // Top/bottom faces: snap Y to grid + radius
+                    targetPos.x = Mathf.Round(hitPoint.x / gridSize) * gridSize;
+                    targetPos.y = Mathf.Round(hitPoint.y / gridSize) * gridSize + wheelRadius;
+                    targetPos.z = Mathf.Round(hitPoint.z / gridSize) * gridSize;
+                }
+                else
+                {
+                    // Side faces: snap X/Z along grid, offset from the surface by wheelWidth
+                    // First snap to grid
+                    targetPos.x = Mathf.Round(hitPoint.x / gridSize) * gridSize;
+                    targetPos.y = Mathf.Round(hitPoint.y / gridSize) * gridSize;
+                    targetPos.z = Mathf.Round(hitPoint.z / gridSize) * gridSize;
+                    
+                    // Then offset from the block surface (not from snapped position)
+                    // Use the hit point to find the surface and offset from there
+                    float surfaceX = Mathf.Round(hit.point.x / gridSize) * gridSize + hit.normal.x * (gridSize / 2f);
+                    float surfaceZ = Mathf.Round(hit.point.z / gridSize) * gridSize + hit.normal.z * (gridSize / 2f);
+                    
+                    // Position wheel so its edge touches the surface
+                    if (Mathf.Abs(hit.normal.x) > 0.5f)
+                        targetPos.x = surfaceX + hit.normal.x * wheelWidth;
+                    if (Mathf.Abs(hit.normal.z) > 0.5f)
+                        targetPos.z = surfaceZ + hit.normal.z * wheelWidth;
+                }
+
+                // Compute rotation
+                Vector3 localUp = hit.normal;
+                Vector3 localForward = Vector3.Cross(Vector3.up, hit.normal);
+                if (localForward == Vector3.zero)
+                    localForward = Vector3.forward;
+
+                Quaternion wheelRot = Quaternion.LookRotation(localForward, localUp);
+                wheelRot *= Quaternion.Euler(0f, 90f, 0f);
+                previewBlock.transform.rotation = wheelRot;
+
+                previewBlock.transform.position = targetPos;
             }
             else
             {
@@ -159,15 +195,17 @@ public class BlockPlacer : MonoBehaviour
                     targetY = Mathf.Round(hitPoint.y / gridSize) * gridSize;
 
                 targetPos = new Vector3(targetX, targetY, targetZ);
+
+                previewBlock.transform.position = targetPos;
+                previewBlock.transform.rotation = Quaternion.identity;
             }
 
-            previewBlock.transform.position = targetPos;
-            previewBlock.transform.rotation = Quaternion.identity; // Reset rotation
-            previewBlock.SetActive(true);
-
             // Check for overlapping blocks
-            Collider[] overlaps = Physics.OverlapBox(targetPos, Vector3.one * gridSize * 0.4f);
+            Collider[] overlaps = Physics.OverlapBox(previewBlock.transform.position, Vector3.one * gridSize * 0.4f);
             validPlacement = overlaps.Length == 0;
+
+            // Reset scale to normal when placing
+            previewBlock.transform.localScale = Vector3.one;
 
             // Preview color
             Color previewColor = validPlacement ? new Color(0, 1, 0, 0.3f) : new Color(1, 0, 0, 0.3f);
@@ -179,7 +217,7 @@ public class BlockPlacer : MonoBehaviour
         }
         else
         {
-            // NOT hitting anything - fallback position relative to character
+            // Fallback position
             float forwardOffset = holdOffset.z;
             if (isWheelMode)
                 forwardOffset += wheelHoldForwardOffset;
@@ -197,18 +235,16 @@ public class BlockPlacer : MonoBehaviour
 
             if (isWheelMode)
             {
-                // Wheel always faces the character on the same axis
                 Vector3 dirToChar = transform.position - previewBlock.transform.position;
                 dirToChar.y = 0;
                 if (dirToChar != Vector3.zero)
                     previewBlock.transform.rotation = Quaternion.LookRotation(dirToChar);
 
-                // Rotate 90 degrees around Z so it's held by the side
                 previewBlock.transform.Rotate(0f, 0f, 90f, Space.Self);
+                previewBlock.transform.localScale = Vector3.one * wheelHoldScale;
             }
             else
             {
-                // Cube: face the character
                 Vector3 dirToChar = transform.position - previewBlock.transform.position;
                 dirToChar.y = 0;
                 if (dirToChar != Vector3.zero)
@@ -218,7 +254,6 @@ public class BlockPlacer : MonoBehaviour
             previewBlock.SetActive(true);
             validPlacement = false;
 
-            // Use original materials in fallback mode
             MeshRenderer[] renderers = previewBlock.GetComponentsInChildren<MeshRenderer>();
             for (int i = 0; i < renderers.Length && i < originalMaterials.Length; i++)
             {
@@ -236,7 +271,8 @@ public class BlockPlacer : MonoBehaviour
         if (overlaps.Length > 0)
             return;
 
-        Instantiate(currentPrefab, pos, Quaternion.identity);
+        // Keep wheel rotation when placing
+        Instantiate(currentPrefab, pos, previewBlock.transform.rotation);
         Debug.Log("Block placed at: " + pos);
     }
 }
