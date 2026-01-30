@@ -43,3 +43,9 @@ sysinfo.txt
 # =========================
 *.pidb.meta
 *.pdb.meta
+
+# =========================
+# Asset Store packages (large files)
+# =========================
+Assets/ALP_Assets/
+Assets/ALP_Assets.meta
