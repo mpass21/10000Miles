@@ -16,7 +16,6 @@ public class BlockPlacer : MonoBehaviour
     public float wheelHoldDownOffset = 5f;  // Extra downward offset for wheel fallback
     public float wheelRadius = 2.5f; // Half the height/width of the wheel prefab
     public float wheelWidth = 2.5f; // Half the width of the wheel (for side face offset)
-    public float wheelHoldScale = 0.5f; // Scale of wheel when holding (not aiming at surface)
 
     [Header("Preview")]
     public Material previewMaterial;
@@ -204,9 +203,6 @@ public class BlockPlacer : MonoBehaviour
             Collider[] overlaps = Physics.OverlapBox(previewBlock.transform.position, Vector3.one * gridSize * 0.4f);
             validPlacement = overlaps.Length == 0;
 
-            // Reset scale to normal when placing
-            previewBlock.transform.localScale = Vector3.one;
-
             // Preview color
             Color previewColor = validPlacement ? new Color(0, 1, 0, 0.3f) : new Color(1, 0, 0, 0.3f);
             foreach (var r in previewBlock.GetComponentsInChildren<MeshRenderer>())
@@ -241,7 +237,6 @@ public class BlockPlacer : MonoBehaviour
                     previewBlock.transform.rotation = Quaternion.LookRotation(dirToChar);
 
                 previewBlock.transform.Rotate(0f, 0f, 90f, Space.Self);
-                previewBlock.transform.localScale = Vector3.one * wheelHoldScale;
             }
             else
             {
@@ -272,7 +267,48 @@ public class BlockPlacer : MonoBehaviour
             return;
 
         // Keep wheel rotation when placing
-        Instantiate(currentPrefab, pos, previewBlock.transform.rotation);
+        GameObject newBlock = Instantiate(currentPrefab, pos, previewBlock.transform.rotation);
+        newBlock.tag = "Block";
+
+        // Add kinematic Rigidbody (will be enabled when vehicle starts)
+        Rigidbody rb = newBlock.GetComponent<Rigidbody>();
+        if (rb == null)
+            rb = newBlock.AddComponent<Rigidbody>();
+        rb.isKinematic = true;
+        rb.useGravity = false;
+
+        // Connect to adjacent blocks with FixedJoints
+        ConnectToAdjacentBlocks(newBlock);
+
         Debug.Log("Block placed at: " + pos);
+    }
+
+    void ConnectToAdjacentBlocks(GameObject newBlock)
+    {
+        // Check all 6 directions for adjacent blocks
+        Vector3[] directions = new Vector3[]
+        {
+            Vector3.up, Vector3.down,
+            Vector3.left, Vector3.right,
+            Vector3.forward, Vector3.back
+        };
+
+        foreach (Vector3 dir in directions)
+        {
+            Vector3 checkPos = newBlock.transform.position + dir * gridSize;
+            Collider[] neighbors = Physics.OverlapSphere(checkPos, gridSize * 0.3f);
+
+            foreach (Collider col in neighbors)
+            {
+                if (col.gameObject != newBlock && col.CompareTag("Block"))
+                {
+                    // Create a FixedJoint to connect blocks
+                    FixedJoint joint = newBlock.AddComponent<FixedJoint>();
+                    joint.connectedBody = col.GetComponent<Rigidbody>();
+                    joint.breakForce = Mathf.Infinity;
+                    joint.breakTorque = Mathf.Infinity;
+                }
+            }
+        }
     }
 }
