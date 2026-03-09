@@ -20,7 +20,6 @@ public class FPSController : MonoBehaviour
     private float xRotation;
     private float yVelocity;
 
-    // 🔹 NEW
     private bool canMove = true;
 
     void Start()
@@ -33,7 +32,6 @@ public class FPSController : MonoBehaviour
 
     void Update()
     {
-        // 🔹 NEW: disable all FPS movement when mounted
         if (!canMove)
             return;
 
@@ -62,10 +60,17 @@ public class FPSController : MonoBehaviour
         controller.Move(move * speed * Time.deltaTime);
     }
 
-    // 🔹 NEW: called by VehicleController
     public void EnableControl(bool enable)
     {
         canMove = enable;
+
+        if (!enable)
+        {
+            // When mounting, reset camera to look straight forward
+            xRotation = 0f;
+            cam.localRotation = Quaternion.identity;
+            transform.localRotation = Quaternion.identity;
+        }
     }
 
     // ---- Input System callbacks ----

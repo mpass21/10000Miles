@@ -33,7 +33,6 @@ public class BlockPlacer : MonoBehaviour
     public GameObject spinDirectionIndicator;
 
     // --- spin state ---
-    // 1 = clockwise (forward), -1 = counter-clockwise (reverse)
     private int wheelSpinDirection = 1;
 
     private bool blockPlaceMode = false;
@@ -44,7 +43,6 @@ public class BlockPlacer : MonoBehaviour
     private Material[] originalMaterials;
     private Vector3 originalPreviewScale;
 
-    // Arrow indicator child indices
     private const int ARROW_CW_INDEX  = 0;
     private const int ARROW_CCW_INDEX = 1;
 
@@ -61,6 +59,14 @@ public class BlockPlacer : MonoBehaviour
 
     void Update()
     {
+        // If another mode took over (e.g. edit mode), exit place mode
+        if (blockPlaceMode && !PlayerModeManager.IsInMode(PlayerModeManager.Mode.Place))
+        {
+            Debug.Log("[BlockPlacer] Another mode became active — exiting place mode.");
+            ExitPlaceMode();
+            return;
+        }
+
         // --- Block type switching ---
         if (Keyboard.current.digit1Key.wasPressedThisFrame)
         {
@@ -91,28 +97,23 @@ public class BlockPlacer : MonoBehaviour
         }
 
         // --- Right-click: toggle wheel spin direction (only while holding a wheel) ---
-        if (isWheelMode && Mouse.current.rightButton.wasPressedThisFrame)
+        if (isWheelMode && blockPlaceMode && Mouse.current.rightButton.wasPressedThisFrame)
         {
             wheelSpinDirection *= -1;
             Debug.Log($"[BlockPlacer] Wheel spin direction: {(wheelSpinDirection == 1 ? "Clockwise (Forward)" : "Counter-Clockwise (Reverse)")}");
             UpdateSpinIndicator();
         }
 
-        // --- Place mode toggle ---
+        // --- E toggles place mode ---
         if (Keyboard.current.eKey.wasPressedThisFrame)
         {
-            blockPlaceMode = !blockPlaceMode;
-
             if (blockPlaceMode)
             {
-                CreatePreview();
-                if (isWheelMode) UpdateSpinIndicator();
+                ExitPlaceMode();
             }
             else
             {
-                DestroyPreview();
-                if (spinDirectionIndicator != null)
-                    spinDirectionIndicator.SetActive(false);
+                EnterPlaceMode();
             }
         }
 
@@ -121,6 +122,26 @@ public class BlockPlacer : MonoBehaviour
 
         if (blockPlaceMode && Mouse.current.leftButton.wasPressedThisFrame && validPlacement)
             PlaceBlock();
+    }
+
+    void EnterPlaceMode()
+    {
+        blockPlaceMode = true;
+        PlayerModeManager.SetMode(PlayerModeManager.Mode.Place);
+        CreatePreview();
+        if (isWheelMode) UpdateSpinIndicator();
+        Debug.Log("[BlockPlacer] ✅ Entered place mode.");
+    }
+
+    void ExitPlaceMode()
+    {
+        blockPlaceMode = false;
+        DestroyPreview();
+        if (spinDirectionIndicator != null)
+            spinDirectionIndicator.SetActive(false);
+        if (PlayerModeManager.IsInMode(PlayerModeManager.Mode.Place))
+            PlayerModeManager.SetMode(PlayerModeManager.Mode.None);
+        Debug.Log("[BlockPlacer] ❌ Exited place mode.");
     }
 
     // -----------------------------------------------------------------------
@@ -136,7 +157,6 @@ public class BlockPlacer : MonoBehaviour
 
         if (!show) return;
 
-        // Toggle which arrow child is visible
         Transform cwArrow  = spinDirectionIndicator.transform.GetChild(ARROW_CW_INDEX);
         Transform ccwArrow = spinDirectionIndicator.transform.GetChild(ARROW_CCW_INDEX);
 
@@ -234,7 +254,6 @@ public class BlockPlacer : MonoBehaviour
                 previewBlock.transform.rotation = wheelRot;
                 previewBlock.transform.position = targetPos;
 
-                // Keep the spin indicator floating above / beside the preview
                 if (spinDirectionIndicator != null && spinDirectionIndicator.activeSelf)
                 {
                     spinDirectionIndicator.transform.position = targetPos + Vector3.up * (wheelRadius + 3f);
@@ -296,7 +315,6 @@ public class BlockPlacer : MonoBehaviour
             for (int i = 0; i < renderers.Length && i < originalMaterials.Length; i++)
                 renderers[i].material = originalMaterials[i];
 
-            // Keep indicator near the held preview
             if (spinDirectionIndicator != null && spinDirectionIndicator.activeSelf)
             {
                 spinDirectionIndicator.transform.position = holdPos + Vector3.up * (wheelRadius + 3f);
@@ -306,7 +324,7 @@ public class BlockPlacer : MonoBehaviour
     }
 
     // -----------------------------------------------------------------------
-    //  Placement — stores spin direction on the wheel
+    //  Placement
     // -----------------------------------------------------------------------
 
     void PlaceBlock()
@@ -326,7 +344,6 @@ public class BlockPlacer : MonoBehaviour
         newBlock.transform.SetParent(vehicleRoot);
         newBlock.tag = isWheelMode ? "Wheel" : "Block";
 
-        // Store spin direction so VehicleDriver can read it
         if (isWheelMode)
         {
             WheelSpinData spinData = newBlock.AddComponent<WheelSpinData>();

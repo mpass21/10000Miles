@@ -10,8 +10,8 @@ public class VehicleStarter : MonoBehaviour
     public Camera cam;
 
     [Header("Prompt UI")]
-    public GameObject promptPrefab; // Assign a world-space TextMeshPro prefab
-    public Vector3 promptOffset = new Vector3(0f, 3f, 0f); // Offset above the block
+    public GameObject promptPrefab;
+    public Vector3 promptOffset = new Vector3(0f, 3f, 0f);
 
     private GameObject targetBlock;
     private GameObject currentPrompt;
@@ -22,7 +22,6 @@ public class VehicleStarter : MonoBehaviour
         if (cam == null)
             cam = GetComponentInChildren<Camera>();
 
-        // Create prompt UI if no prefab assigned
         if (promptPrefab == null)
         {
             CreateDefaultPrompt();
@@ -37,13 +36,20 @@ public class VehicleStarter : MonoBehaviour
         promptText.fontSize = 12;
         promptText.alignment = TextAlignmentOptions.Center;
         promptText.color = Color.white;
-        
-        // Make it face camera (billboard)
         currentPrompt.SetActive(false);
     }
 
     void Update()
     {
+        // Don't raycast for vehicles while mounted in one
+        VehicleDriver currentlyMounted = GetMountedVehicle();
+        if (currentlyMounted != null)
+        {
+            if (currentPrompt != null) currentPrompt.SetActive(false);
+            targetBlock = null;
+            return;
+        }
+
         CheckForDriverBlock();
         UpdatePrompt();
 
@@ -51,6 +57,20 @@ public class VehicleStarter : MonoBehaviour
         {
             StartVehicle();
         }
+    }
+
+    // Returns a VehicleDriver if this player is currently mounted in one
+    VehicleDriver GetMountedVehicle()
+    {
+        // Check if our transform parent chain contains a VehicleDriver seat
+        Transform current = transform.parent;
+        while (current != null)
+        {
+            VehicleDriver vd = current.GetComponentInParent<VehicleDriver>();
+            if (vd != null) return vd;
+            current = current.parent;
+        }
+        return null;
     }
 
     void CheckForDriverBlock()
@@ -62,12 +82,10 @@ public class VehicleStarter : MonoBehaviour
         {
             if (hit.collider.CompareTag("Block"))
             {
-                // Get the root block with Rigidbody
                 GameObject hitBlock = hit.collider.GetComponentInParent<Rigidbody>()?.gameObject;
-                
+
                 if (hitBlock != null)
                 {
-                    // Find the main driver block in the connected structure
                     GameObject driverBlock = FindDriverBlockInStructure(hitBlock);
                     if (driverBlock != null)
                     {
@@ -83,9 +101,8 @@ public class VehicleStarter : MonoBehaviour
 
     GameObject FindDriverBlockInStructure(GameObject startBlock)
     {
-        // Search all connected blocks for one with VehicleDriver
         List<GameObject> connected = GetAllConnectedBlocks(startBlock);
-        
+
         foreach (GameObject block in connected)
         {
             if (block.GetComponent<VehicleDriver>() != null)
@@ -93,7 +110,7 @@ public class VehicleStarter : MonoBehaviour
                 return block;
             }
         }
-        
+
         return null;
     }
 
@@ -104,13 +121,9 @@ public class VehicleStarter : MonoBehaviour
         if (targetBlock != null)
         {
             currentPrompt.SetActive(true);
-            
-            // Position above the driver block
             currentPrompt.transform.position = targetBlock.transform.position + promptOffset;
-            
-            // Billboard: make it face the camera
             currentPrompt.transform.LookAt(cam.transform);
-            currentPrompt.transform.Rotate(0f, 180f, 0f); // Flip to face correctly
+            currentPrompt.transform.Rotate(0f, 180f, 0f);
         }
         else
         {
@@ -122,7 +135,6 @@ public class VehicleStarter : MonoBehaviour
     {
         if (targetBlock == null) return;
 
-        // Hide prompt when starting vehicle
         if (currentPrompt != null)
             currentPrompt.SetActive(false);
 
@@ -142,7 +154,7 @@ public class VehicleStarter : MonoBehaviour
         VehicleDriver vc = targetBlock.GetComponent<VehicleDriver>();
         if (vc != null)
         {
-            vc.ActivateVehicle(gameObject); // player mounts vehicle
+            vc.ActivateVehicle(gameObject);
         }
 
         targetBlock = null;

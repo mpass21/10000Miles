@@ -11,13 +11,14 @@ public class VehicleDriver : MonoBehaviour
     public float maxSpeed = 30f;
 
     [Header("Wheel Grounding")]
-    public float groundRayLength = 8f;
+    public float groundRayLength = 15f;
 
     [Header("Seat")]
     public Transform seat;
 
     private Rigidbody rb;
     private bool isActive = false;
+    private GameObject mountedPlayer;
 
     private struct WheelEntry
     {
@@ -37,6 +38,8 @@ public class VehicleDriver : MonoBehaviour
 
     public void ActivateVehicle(GameObject player)
     {
+        mountedPlayer = player;
+
         FPSController fps = player.GetComponent<FPSController>();
         CharacterController cc = player.GetComponent<CharacterController>();
         if (fps != null) fps.EnableControl(false);
@@ -51,6 +54,26 @@ public class VehicleDriver : MonoBehaviour
 
         FindWheels();
         isActive = true;
+    }
+
+    public void DeactivateVehicle()
+    {
+        if (mountedPlayer == null) return;
+
+        FPSController fps = mountedPlayer.GetComponent<FPSController>();
+        CharacterController cc = mountedPlayer.GetComponent<CharacterController>();
+
+        mountedPlayer.transform.SetParent(null);
+        mountedPlayer.transform.position = seat != null
+            ? seat.position + Vector3.up * 2f
+            : transform.position + Vector3.up * 2f;
+        mountedPlayer.transform.rotation = Quaternion.identity;
+
+        if (cc != null) cc.enabled = true;
+        if (fps != null) fps.EnableControl(true);
+
+        isActive = false;
+        mountedPlayer = null;
     }
 
     void FindWheels()
@@ -117,7 +140,6 @@ public class VehicleDriver : MonoBehaviour
         return true;
     }
 
-    // Draws rays every frame — visible in both Scene AND Game view
     void Update()
     {
         foreach (WheelEntry entry in wheels)
@@ -126,18 +148,19 @@ public class VehicleDriver : MonoBehaviour
 
             bool grounded = GetRollDirection(entry, out Vector3 rollDir, out Vector3 contactDir);
 
-            // Roll direction — cyan (forward) or magenta (reverse)
             Color rollColor = entry.spinDirection == 1
-                ? new Color(0f, 1f, 1f)  // cyan
-                : new Color(1f, 0f, 1f); // magenta
+                ? new Color(0f, 1f, 1f)
+                : new Color(1f, 0f, 1f);
             Debug.DrawRay(entry.transform.position, rollDir * 50f, rollColor);
-
-            // Contact face toward ground — yellow
             Debug.DrawRay(entry.transform.position, contactDir * 50f, Color.yellow);
-
-            // Axle both directions — white
             Debug.DrawRay(entry.transform.position,  entry.transform.forward * 50f, Color.white);
             Debug.DrawRay(entry.transform.position, -entry.transform.forward * 50f, Color.white);
+        }
+
+        // Exit vehicle with Q or Space while mounted
+        if (isActive && (Keyboard.current.qKey.wasPressedThisFrame || Keyboard.current.spaceKey.wasPressedThisFrame))
+        {
+            DeactivateVehicle();
         }
     }
 
@@ -149,7 +172,6 @@ public class VehicleDriver : MonoBehaviour
         bool braking = false;
         if (Keyboard.current.wKey.isPressed) throttle =  1f;
         if (Keyboard.current.sKey.isPressed) throttle = -1f;
-        if (Keyboard.current.spaceKey.isPressed) braking = true;
 
         float currentSpeed = rb.linearVelocity.magnitude;
         Vector3 netForce = Vector3.zero;
