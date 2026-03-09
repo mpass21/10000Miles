@@ -21,6 +21,7 @@ public class FPSController : MonoBehaviour
     private float yVelocity;
 
     private bool canMove = true;
+    private bool canLook = true;   // separate flag so riding still allows looking
 
     void Start()
     {
@@ -32,17 +33,19 @@ public class FPSController : MonoBehaviour
 
     void Update()
     {
-        if (!canMove)
-            return;
-
         // ---- Mouse Look ----
-        Vector2 mouse = lookInput * mouseSensitivity;
-        xRotation -= mouse.y;
-        xRotation = Mathf.Clamp(xRotation, -90f, 90f);
-        cam.localRotation = Quaternion.Euler(xRotation, 0f, 0f);
-        transform.Rotate(Vector3.up * mouse.x);
+        if (canLook)
+        {
+            Vector2 mouse = lookInput * mouseSensitivity;
+            xRotation -= mouse.y;
+            xRotation = Mathf.Clamp(xRotation, -90f, 90f);
+            cam.localRotation = Quaternion.Euler(xRotation, 0f, 0f);
+            transform.Rotate(Vector3.up * mouse.x);
+        }
 
         // ---- Movement ----
+        if (!canMove) return;
+
         Vector3 move = transform.right * moveInput.x + transform.forward * moveInput.y;
 
         if (controller.isGrounded)
@@ -60,16 +63,18 @@ public class FPSController : MonoBehaviour
         controller.Move(move * speed * Time.deltaTime);
     }
 
+    // Called by VehicleDriver when mounting/dismounting.
+    // Disables movement but keeps mouse look active.
     public void EnableControl(bool enable)
     {
         canMove = enable;
+        canLook = true;   // always keep look enabled
 
         if (!enable)
         {
-            // When mounting, reset camera to look straight forward
+            // Reset vertical camera tilt when mounting so view starts neutral
             xRotation = 0f;
             cam.localRotation = Quaternion.identity;
-            transform.localRotation = Quaternion.identity;
         }
     }
 
