@@ -355,7 +355,11 @@ MonoBehaviour:
   moveForce: 5000
   brakeForce: 3000
   maxSpeed: 30
+  maxSteerAngle: 35
+  steerSpeed: 120
+  steeringForce: 40000
   groundRayLength: 15
+  wheelDownforce: 50
   seat: {fileID: 557086387}
 --- !u!1 &277281380
 GameObject:
@@ -929,6 +933,7 @@ MonoBehaviour:
   cam: {fileID: 729421331}
   vehicleRoot: {fileID: 233743399}
   spinDirectionIndicator: {fileID: 0}
+  wheelTypeIndicator: {fileID: 0}
 --- !u!114 &2002611220
 MonoBehaviour:
   m_ObjectHideFlags: 0

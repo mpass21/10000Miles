@@ -18,6 +18,9 @@ public class VehicleDriver : MonoBehaviour
     [Header("Wheel Grounding")]
     public float groundRayLength = 15f;
 
+    [Header("Downforce")]
+    public float wheelDownforce = 50f;  // downward force applied per grounded wheel
+
     [Header("Seat")]
     public Transform seat;
 
@@ -274,31 +277,47 @@ public class VehicleDriver : MonoBehaviour
             {
                 Vector3 driveForce = rollDir * throttle * (moveForce / wheels.Count);
                 netForce += driveForce;
+
                 rb.AddForceAtPosition(driveForce, entry.transform.position, ForceMode.Force);
             }
+
         }
 
-        // ---- Turn wheels — apply lateral steering force ------------------
-        // Gate on how much the vehicle velocity aligns with this wheel's rollDir
-        // (the blue/magenta ray). This means steering only activates when the
-        // wheel is actually rolling forward/backward — not from sideways slides,
-        // airborne bounces, or standing still.
+        // ---- Downforce — all grounded wheels -----------------------------
+        // Applied to every wheel regardless of type so pitch is symmetrical
+        // whether driving forward or backward.
+        foreach (WheelEntry entry in wheels)
+        {
+            if (!GetRollDirection(entry, out _, out _)) continue;
+            rb.AddForceAtPosition(Vector3.down * wheelDownforce, entry.transform.position, ForceMode.Force);
+        }
+
+        // ---- Turn wheels — lateral steering force only ------------------
+        // Steering wheels should ONLY rotate the car, never propel it forward.
+        // rollDir on a turned wheel points diagonally (forward + sideways), so
+        // applying force along it would accelerate the car. Instead we:
+        //   1. Project rollDir onto the vehicle's right axis → pure lateral direction
+        //   2. Gate the force on how fast the car is rolling (via drive-wheel rollDir dot)
+        //      so steering does nothing when stationary or airborne.
         foreach (WheelEntry entry in wheels)
         {
             if (entry.wheelType != WheelSpinData.WheelType.Turn) continue;
             if (!GetRollDirection(entry, out Vector3 rollDir, out _)) continue;
             groundedTurn++;
 
-            // Dot velocity against the wheel's actual roll ray.
-            // Positive = moving in the roll direction, negative = reversing.
-            // Abs so steering works equally when reversing.
-            float rollSpeed       = Vector3.Dot(rb.linearVelocity, rollDir);
-            float rollSpeedFactor = Mathf.Clamp01(Mathf.Abs(rollSpeed) / 3f);
+            // Use the vehicle's own right axis as the lateral direction —
+            // this is purely sideways and has zero forward component.
+            float lateralDot   = Vector3.Dot(rollDir, transform.right);
+            Vector3 lateralDir = transform.right * lateralDot; // signed sideways push
+
+            // Gate on forward speed so steering doesn't fire when stopped/airborne.
+            float forwardSpeed    = Vector3.Dot(rb.linearVelocity, transform.forward);
+            float rollSpeedFactor = Mathf.Clamp01(Mathf.Abs(forwardSpeed) / 3f);
 
             if (Mathf.Abs(currentSteerAngle) > 0.5f && rollSpeedFactor > 0f)
             {
                 float forceMag     = (steeringForce * 0.05f) / Mathf.Max(1, groundedTurn);
-                Vector3 steerForce = rollDir * forceMag * rollSpeedFactor;
+                Vector3 steerForce = lateralDir * forceMag * rollSpeedFactor;
                 rb.AddForceAtPosition(steerForce, entry.transform.position, ForceMode.Force);
             }
         }
