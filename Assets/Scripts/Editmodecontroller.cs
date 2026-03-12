@@ -21,8 +21,7 @@ public class EditModeController : MonoBehaviour
     void Start()
     {
         cam = GetComponentInChildren<Camera>();
-        Debug.Log($"[EditMode] Initialized. Camera found: {cam != null}. Ray distance: {rayDistance}");
-
+      
         if (editModeIndicator != null)
             editModeIndicator.SetActive(false);
         else
@@ -217,7 +216,6 @@ public class EditModeController : MonoBehaviour
             VehicleDriver vd = current.GetComponentInParent<VehicleDriver>();
             if (vd != null)
             {
-                Debug.Log($"[EditMode] Mounted vehicle detected: '{vd.name}'");
                 return vd;
             }
             current = current.parent;
