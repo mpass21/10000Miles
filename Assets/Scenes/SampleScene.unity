@@ -786,7 +786,7 @@ MonoBehaviour:
   groundRayLength: 15
   wheelDownforce: 50
   wheelSpinRate: 200
-  seat: {fileID: 0}
+  seat: {fileID: 557086387}
 --- !u!54 &1019182647
 Rigidbody:
   m_ObjectHideFlags: 0
@@ -980,7 +980,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::VehicleStarter
   rayDistance: 25
-  cam: {fileID: 0}
+  cam: {fileID: 729421331}
   promptPrefab: {fileID: 0}
   promptOffset: {x: 0, y: 3, z: 0}
 --- !u!114 &2002611221

@@ -63,7 +63,6 @@ public class VehicleDriver : MonoBehaviour
         CharacterController cc = player.GetComponent<CharacterController>();
         FPSController fps = player.GetComponent<FPSController>();
 
-        // Disable CC first, before any transform changes
         if (cc  != null) cc.enabled = false;
         if (fps != null) fps.EnableControl(false);
 
@@ -72,10 +71,6 @@ public class VehicleDriver : MonoBehaviour
             player.transform.SetParent(seat);
             player.transform.localPosition = Vector3.zero;
             player.transform.localRotation = Quaternion.identity;
-        }
-        else
-        {
-            Debug.LogError("[VehicleDriver] Seat is not assigned in the Inspector!");
         }
 
         FindWheels();
@@ -91,7 +86,6 @@ public class VehicleDriver : MonoBehaviour
         FPSController fps = mountedPlayer.GetComponent<FPSController>();
         CharacterController cc = mountedPlayer.GetComponent<CharacterController>();
 
-        // Unparent first, then re-enable CC
         mountedPlayer.transform.SetParent(null);
         mountedPlayer.transform.position = seat != null
             ? seat.position + Vector3.up * 2f
@@ -140,24 +134,14 @@ public class VehicleDriver : MonoBehaviour
                 foreach (Collider wc in child.GetComponentsInChildren<Collider>())
                     Physics.IgnoreCollision(wc, frameCollider);
             }
-
-            Debug.Log($"[VehicleDriver] Wheel '{child.name}' | spin={spinDir} | type={type}");
         }
-
-        Debug.Log($"[VehicleDriver] Total wheels: {wheels.Count} | mass: {rb.mass}");
     }
-
-    // -----------------------------------------------------------------------
-    //  Steering — only updates the angle, rotation handled in UpdateSpin
-    // -----------------------------------------------------------------------
 
     void UpdateSteer(float steerInput)
     {
         float targetAngle = steerInput * maxSteerAngle;
         currentSteerAngle = Mathf.MoveTowards(
             currentSteerAngle, targetAngle, steerSpeed * Time.deltaTime);
-
-        // Rotation is applied in UpdateSpin to avoid overwriting spin on Turn wheels
     }
 
     void ResetSteer()
@@ -171,12 +155,7 @@ public class VehicleDriver : MonoBehaviour
         currentSteerAngle = 0f;
     }
 
-    // -----------------------------------------------------------------------
-    //  Spin — handles all wheel rotation including combined steer+spin
-    //  Turn wheels: steer and spin are combined so neither overwrites the other
-    //  Drive wheels: spin only when throttle is applied
-    // -----------------------------------------------------------------------
-
+    // --- UPDATED UpdateSpin using Approach 2 ---
     void UpdateSpin()
     {
         currentSpinAngle += wheelSpinRate * -throttle * Time.deltaTime;
@@ -189,24 +168,22 @@ public class VehicleDriver : MonoBehaviour
 
             if (entry.wheelType == WheelSpinData.WheelType.Turn)
             {
-                // Combine steer + spin so neither overwrites the other
-                Quaternion steerDelta = Quaternion.AngleAxis(currentSteerAngle, entry.parentWorldUp);
+                // We multiply the angle by entry.spinDirection. 
+                // If the wheel is mirrored (spinDirection -1), the steer angle flips,
+                // making both wheels point the same way in world space.
+                Quaternion steerDelta = Quaternion.AngleAxis(currentSteerAngle, Vector3.right);
                 Quaternion spinDelta  = Quaternion.AngleAxis(currentSpinAngle * entry.spinDirection, Vector3.forward);
-                entry.transform.rotation = steerDelta * entry.baseWorldRotation * spinDelta;
+                
+                entry.transform.localRotation = entry.baseLocalRotation * steerDelta * spinDelta;
             }
             else
             {
-                // Drive wheels only spin when throttle is applied
                 if (throttle == 0f) continue;
                 float spin = currentSpinAngle * entry.spinDirection;
                 entry.transform.localRotation = entry.baseLocalRotation * Quaternion.AngleAxis(spin, Vector3.forward);
             }
         }
     }
-
-    // -----------------------------------------------------------------------
-    //  Grounding
-    // -----------------------------------------------------------------------
 
     bool GetRollDirection(WheelEntry entry, out Vector3 rollDir, out Vector3 contactDir)
     {
@@ -247,29 +224,8 @@ public class VehicleDriver : MonoBehaviour
         return true;
     }
 
-    // -----------------------------------------------------------------------
-    //  Unity loop
-    // -----------------------------------------------------------------------
-
     void Update()
     {
-        foreach (WheelEntry entry in wheels)
-        {
-            if (entry.transform == null) continue;
-            GetRollDirection(entry, out Vector3 rollDir, out Vector3 contactDir);
-
-            Color rollColor = entry.spinDirection == 1
-                ? new Color(0f, 1f, 1f) : new Color(1f, 0f, 1f);
-
-            if (entry.wheelType == WheelSpinData.WheelType.Turn)
-                rollColor = Color.yellow;
-
-            Debug.DrawRay(entry.transform.position, rollDir     * 50f, rollColor);
-            Debug.DrawRay(entry.transform.position, contactDir  * 50f, Color.gray);
-            Debug.DrawRay(entry.transform.position,  entry.transform.forward * 50f, Color.white);
-            Debug.DrawRay(entry.transform.position, -entry.transform.forward * 50f, Color.white);
-        }
-
         if (isActive)
         {
             throttle = 0f;
@@ -277,8 +233,8 @@ public class VehicleDriver : MonoBehaviour
             if (Keyboard.current.sKey.isPressed) throttle = -1f;
 
             float steerInput = 0f;
-            if (Keyboard.current.aKey.isPressed) steerInput = -1f;
-            if (Keyboard.current.dKey.isPressed) steerInput =  1f;
+            if (Keyboard.current.dKey.isPressed) steerInput = 1f;
+            if (Keyboard.current.aKey.isPressed) steerInput =  -1f;
 
             UpdateSteer(steerInput);
             UpdateSpin();
@@ -297,54 +253,39 @@ public class VehicleDriver : MonoBehaviour
 
         float currentSpeed = rb.linearVelocity.magnitude;
 
-        Vector3 netForce  = Vector3.zero;
-        int groundedDrive = 0;
-        int groundedTurn  = 0;
-
-        // ---- Drive wheels ------------------------------------------------
         foreach (WheelEntry entry in wheels)
         {
             if (entry.wheelType != WheelSpinData.WheelType.Drive) continue;
             if (!GetRollDirection(entry, out Vector3 rollDir, out _)) continue;
-            groundedDrive++;
 
             if (throttle != 0f && currentSpeed < maxSpeed)
             {
                 Vector3 driveForce = rollDir * throttle * (moveForce / wheels.Count);
-                netForce += driveForce;
                 rb.AddForceAtPosition(driveForce, entry.transform.position, ForceMode.Force);
             }
         }
 
-        // ---- Downforce — all grounded wheels -----------------------------
         foreach (WheelEntry entry in wheels)
         {
             if (!GetRollDirection(entry, out _, out _)) continue;
             rb.AddForceAtPosition(Vector3.down * wheelDownforce, entry.transform.position, ForceMode.Force);
         }
 
-        // ---- Turn wheels — lateral steering force only ------------------
         foreach (WheelEntry entry in wheels)
         {
             if (entry.wheelType != WheelSpinData.WheelType.Turn) continue;
-            if (!GetRollDirection(entry, out Vector3 rollDir, out _)) continue;
-            groundedTurn++;
 
-            float lateralDot   = Vector3.Dot(rollDir, transform.right);
-            Vector3 lateralDir = transform.right * lateralDot;
+            float steerInput = 0f;
+            if (Keyboard.current.aKey.isPressed) steerInput =  -1f;
+            if (Keyboard.current.dKey.isPressed) steerInput = 1f;
 
-            float forwardSpeed    = Vector3.Dot(rb.linearVelocity, transform.forward);
-            float rollSpeedFactor = Mathf.Clamp01(Mathf.Abs(forwardSpeed) / 3f);
-
-            if (Mathf.Abs(currentSteerAngle) > 0.5f && rollSpeedFactor > 0f)
+            if (steerInput != 0f)
             {
-                float forceMag     = (steeringForce * 0.05f) / Mathf.Max(1, groundedTurn);
-                Vector3 steerForce = lateralDir * forceMag * rollSpeedFactor;
+                Vector3 steerForce = transform.right * steerInput * entry.spinDirection * (steeringForce * 0.1f);
                 rb.AddForceAtPosition(steerForce, entry.transform.position, ForceMode.Force);
             }
         }
 
-        // ---- Drag --------------------------------------------------------
         if (throttle == 0f)
         {
             Vector3 flatVel = rb.linearVelocity;
@@ -352,11 +293,7 @@ public class VehicleDriver : MonoBehaviour
             rb.AddForce(-flatVel * 2f, ForceMode.Force);
         }
 
-        // Reduce sideways slip
         Vector3 sidewaysVel = Vector3.Dot(rb.linearVelocity, transform.right) * transform.right;
         rb.AddForce(-sidewaysVel * 5f, ForceMode.Force);
-
-        if (throttle != 0f)
-            Debug.Log($"[VehicleDriver] Drive:{groundedDrive} Turn:{groundedTurn} | net:{netForce} | spd:{currentSpeed:F2} | steer:{currentSteerAngle:F1}°");
     }
 }
