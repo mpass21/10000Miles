@@ -60,16 +60,22 @@ public class VehicleDriver : MonoBehaviour
     {
         mountedPlayer = player;
 
-        FPSController fps = player.GetComponent<FPSController>();
         CharacterController cc = player.GetComponent<CharacterController>();
-        if (fps != null) fps.EnableControl(false);
+        FPSController fps = player.GetComponent<FPSController>();
+
+        // Disable CC first, before any transform changes
         if (cc  != null) cc.enabled = false;
+        if (fps != null) fps.EnableControl(false);
 
         if (seat != null)
         {
             player.transform.SetParent(seat);
             player.transform.localPosition = Vector3.zero;
             player.transform.localRotation = Quaternion.identity;
+        }
+        else
+        {
+            Debug.LogError("[VehicleDriver] Seat is not assigned in the Inspector!");
         }
 
         FindWheels();
@@ -85,6 +91,7 @@ public class VehicleDriver : MonoBehaviour
         FPSController fps = mountedPlayer.GetComponent<FPSController>();
         CharacterController cc = mountedPlayer.GetComponent<CharacterController>();
 
+        // Unparent first, then re-enable CC
         mountedPlayer.transform.SetParent(null);
         mountedPlayer.transform.position = seat != null
             ? seat.position + Vector3.up * 2f
@@ -141,7 +148,7 @@ public class VehicleDriver : MonoBehaviour
     }
 
     // -----------------------------------------------------------------------
-    //  Steering
+    //  Steering — only updates the angle, rotation handled in UpdateSpin
     // -----------------------------------------------------------------------
 
     void UpdateSteer(float steerInput)
@@ -150,15 +157,7 @@ public class VehicleDriver : MonoBehaviour
         currentSteerAngle = Mathf.MoveTowards(
             currentSteerAngle, targetAngle, steerSpeed * Time.deltaTime);
 
-        for (int i = 0; i < wheels.Count; i++)
-        {
-            WheelEntry entry = wheels[i];
-            if (entry.wheelType != WheelSpinData.WheelType.Turn) continue;
-            if (entry.transform == null) continue;
-
-            Quaternion steerDelta = Quaternion.AngleAxis(currentSteerAngle, entry.parentWorldUp);
-            entry.transform.rotation = steerDelta * entry.baseWorldRotation;
-        }
+        // Rotation is applied in UpdateSpin to avoid overwriting spin on Turn wheels
     }
 
     void ResetSteer()
@@ -166,7 +165,6 @@ public class VehicleDriver : MonoBehaviour
         for (int i = 0; i < wheels.Count; i++)
         {
             WheelEntry entry = wheels[i];
-            if (entry.wheelType != WheelSpinData.WheelType.Turn) continue;
             if (entry.transform == null) continue;
             entry.transform.localRotation = entry.baseLocalRotation;
         }
@@ -174,15 +172,14 @@ public class VehicleDriver : MonoBehaviour
     }
 
     // -----------------------------------------------------------------------
-    //  Spin — simple local space rotation, no world space involved
-    //  Spins when W or S is held, direction flips for reverse
+    //  Spin — handles all wheel rotation including combined steer+spin
+    //  Turn wheels: steer and spin are combined so neither overwrites the other
+    //  Drive wheels: spin only when throttle is applied
     // -----------------------------------------------------------------------
 
     void UpdateSpin()
     {
-        if (throttle == 0f) return;
-
-        currentSpinAngle += wheelSpinRate * throttle * Time.deltaTime;
+        currentSpinAngle += wheelSpinRate * -throttle * Time.deltaTime;
         currentSpinAngle %= 360f;
 
         for (int i = 0; i < wheels.Count; i++)
@@ -190,9 +187,20 @@ public class VehicleDriver : MonoBehaviour
             WheelEntry entry = wheels[i];
             if (entry.transform == null) continue;
 
-            // Spin purely in local space around local Z — immune to any parent scale
-            float spin = currentSpinAngle * entry.spinDirection;
-            entry.transform.localRotation = entry.baseLocalRotation * Quaternion.AngleAxis(spin, Vector3.forward);
+            if (entry.wheelType == WheelSpinData.WheelType.Turn)
+            {
+                // Combine steer + spin so neither overwrites the other
+                Quaternion steerDelta = Quaternion.AngleAxis(currentSteerAngle, entry.parentWorldUp);
+                Quaternion spinDelta  = Quaternion.AngleAxis(currentSpinAngle * entry.spinDirection, Vector3.forward);
+                entry.transform.rotation = steerDelta * entry.baseWorldRotation * spinDelta;
+            }
+            else
+            {
+                // Drive wheels only spin when throttle is applied
+                if (throttle == 0f) continue;
+                float spin = currentSpinAngle * entry.spinDirection;
+                entry.transform.localRotation = entry.baseLocalRotation * Quaternion.AngleAxis(spin, Vector3.forward);
+            }
         }
     }
 
