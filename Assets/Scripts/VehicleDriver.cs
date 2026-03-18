@@ -309,19 +309,6 @@ public class VehicleDriver : MonoBehaviour
             }
         }
 
-        if (anyWheelGrounded)
-        {
-            if (throttle == 0f)
-            {
-                Vector3 flatVel = rb.linearVelocity;
-                flatVel.y = 0f;
-                rb.AddForce(-flatVel * 2f, ForceMode.Force);
-            }
 
-            Vector3 sidewaysVel = Vector3.Dot(rb.linearVelocity, transform.right) * transform.right;
-            rb.AddForce(-sidewaysVel * 20f, ForceMode.Force);
-        }
-
-        rb.angularDamping = anyWheelGrounded ? 5f : 0.05f;
     }
 }
