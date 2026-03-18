@@ -47,6 +47,7 @@ public class BlockPlacer : MonoBehaviour
     private bool isWheelMode = false;
     private Material[] originalMaterials;
     private Vector3 originalPreviewScale;
+    private float baseMass;
 
     private const int ARROW_CW_INDEX  = 0;
     private const int ARROW_CCW_INDEX = 1;
@@ -59,6 +60,11 @@ public class BlockPlacer : MonoBehaviour
             cam = GetComponentInChildren<Camera>();
 
         currentPrefab = cubePrefab;
+
+        // Store the vehicle's starting mass
+        Rigidbody vehicleRb = vehicleRoot.GetComponent<Rigidbody>();
+        if (vehicleRb != null)
+            baseMass = vehicleRb.mass;
 
         if (spinDirectionIndicator != null)
             spinDirectionIndicator.SetActive(false);
@@ -353,6 +359,32 @@ public class BlockPlacer : MonoBehaviour
             spinData.spinDirection = wheelSpinDirection;
             spinData.wheelType     = wheelType;
             Debug.Log($"[BlockPlacer] Placed wheel | spin={wheelSpinDirection} | type={wheelType}");
+        }
+
+        RecalculateCenterOfMass();
+    }
+
+    void RecalculateCenterOfMass()
+    {
+        Rigidbody vehicleRb = vehicleRoot.GetComponent<Rigidbody>();
+        if (vehicleRb == null) return;
+
+        float totalMass     = baseMass;
+        Vector3 weightedSum = vehicleRoot.position * baseMass;
+
+        foreach (Transform child in vehicleRoot.GetComponentsInChildren<Transform>())
+        {
+            if (!child.CompareTag("Block") && !child.CompareTag("Wheel")) continue;
+
+            float blockMass  = child.CompareTag("Wheel") ? 10f : 5f;
+            weightedSum     += child.position * blockMass;
+            totalMass       += blockMass;
+        }
+
+        if (totalMass > 0f)
+        {
+            vehicleRb.mass         = totalMass;
+            vehicleRb.centerOfMass = vehicleRoot.InverseTransformPoint(weightedSum / totalMass);
         }
     }
 }
