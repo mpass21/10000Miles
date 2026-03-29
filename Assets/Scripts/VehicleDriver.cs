@@ -13,7 +13,7 @@ public class VehicleDriver : MonoBehaviour
     [Header("Steering")]
     public float maxSteerAngle  = 35f;
     public float steerSpeed     = 120f;
-    public float steeringForce  = 40000f;
+    public float steeringForce  = 150f;
 
     [Header("Wheel Grounding")]
     public float groundRayLength   = 15f;
@@ -267,7 +267,6 @@ public class VehicleDriver : MonoBehaviour
             {
                 string wheelName = wheels[i].transform != null ? wheels[i].transform.name : $"Wheel {i}";
                 string state = grounded ? "GROUNDED" : "AIRBORNE";
-                Debug.Log($"[VehicleDriver] {wheelName} (index {i}) -> {state} at t={Time.time:F2}s");
                 wheelGroundedState[i] = grounded;
             }
         }
@@ -296,19 +295,43 @@ public class VehicleDriver : MonoBehaviour
 
         foreach (WheelEntry entry in wheels)
         {
-            if (entry.wheelType != WheelSpinData.WheelType.Turn) continue;
-
-            float steerInput = 0f;
-            if (Keyboard.current.aKey.isPressed) steerInput = -1f;
-            if (Keyboard.current.dKey.isPressed) steerInput =  1f;
-
-            if (steerInput != 0f && isMoving && anyWheelGrounded)
+            if (entry.wheelType != WheelSpinData.WheelType.Turn)
             {
-                Vector3 steerForce = transform.right * steerInput * entry.spinDirection * (steeringForce * 0.1f);
-                rb.AddForceAtPosition(steerForce, entry.transform.position, ForceMode.Force);
+                if (Keyboard.current.pKey.isPressed)
+                {
+                    Vector3 steerForce = transform.forward * steeringForce;
+                    rb.AddForceAtPosition(steerForce * 10f, entry.transform.position, ForceMode.Force);
+                    Debug.DrawRay(entry.transform.position, steerForce.normalized * 20f, Color.red);
+                }
+            }
+            else
+            {
+                float steerInput = 0f;
+                if (Keyboard.current.aKey.isPressed) steerInput = -1f;
+                if (Keyboard.current.dKey.isPressed) steerInput =  1f;
+
+                if (steerInput != 0f && isMoving && anyWheelGrounded)
+                {
+                    Vector3 steerForce = transform.right * steerInput * entry.spinDirection * steeringForce;
+                    rb.AddForceAtPosition(steerForce, entry.transform.position, ForceMode.Force);
+                    Debug.DrawRay(entry.transform.position, steerForce.normalized * 10f, Color.blue);
+                }
             }
         }
 
+        if (anyWheelGrounded)
+        {
+            if (throttle == 0f)
+            {
+                Vector3 flatVel = rb.linearVelocity;
+                flatVel.y = 0f;
+                rb.AddForce(-flatVel * 2f, ForceMode.Force);
+            }
 
+            Vector3 sidewaysVel = Vector3.Dot(rb.linearVelocity, transform.right) * transform.right;
+            rb.AddForce(-sidewaysVel * 20f, ForceMode.Force);
+        }
+
+        rb.angularDamping = anyWheelGrounded ? 5f : 0.05f;
     }
 }
