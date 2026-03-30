@@ -2,6 +2,9 @@ using UnityEngine;
 using UnityEngine.InputSystem;
 using System.Collections.Generic;
 
+// .forward is the wheels side to side direction
+// this is used to prevent wheel drift
+
 [RequireComponent(typeof(Rigidbody))]
 public class VehicleDriver : MonoBehaviour
 {
@@ -10,6 +13,11 @@ public class VehicleDriver : MonoBehaviour
     public float brakeForce = 3000f;
     public float maxSpeed   = 30f;
 
+    [Header("Wheel Speed Limits")]
+    public float maxWheelForwardSpeed  = 30f;
+    public float maxWheelReverseSpeed  = 10f;
+    public float speedLimitPushback    = 50f;
+
     [Header("Steering")]
     public float maxSteerAngle  = 35f;
     public float steerSpeed     = 120f;
@@ -17,13 +25,13 @@ public class VehicleDriver : MonoBehaviour
 
     [Header("Wheel Grounding")]
     public float groundRayLength   = 15f;
-    public float groundBuffer      = 5f;  // extra ray length used only for grounded checks (steering/damping/downforce)
+    public float groundBuffer      = 5f;
 
     [Header("Downforce")]
     public float wheelDownforce = 500f;
 
     [Header("Wheel Spin")]
-    public float wheelSpinRate = 200f; // degrees per second
+    public float wheelSpinRate = 200f;
 
     [Header("Seat")]
     public Transform seat;
@@ -48,13 +56,19 @@ public class VehicleDriver : MonoBehaviour
     private float currentSpinAngle  = 0f;
     private float throttle          = 0f;
 
-    // Tracks last known grounded state per wheel index to detect changes
     private Dictionary<int, bool> wheelGroundedState = new();
+
+    // GUI speed tracking
+    private float pWheelForwardSpeed = 0f;
+    private float speedTotal    = 0f;
+    private float speedForward  = 0f;
+    private float speedRight    = 0f;
+    private float speedUp       = 0f;
 
     void Awake()
     {
         rb = GetComponent<Rigidbody>();
-        rb.interpolation    = RigidbodyInterpolation.Interpolate;
+        rb.interpolation = RigidbodyInterpolation.Interpolate;
     }
 
     public void ActivateVehicle(GameObject player)
@@ -171,7 +185,6 @@ public class VehicleDriver : MonoBehaviour
             {
                 Quaternion steerDelta = Quaternion.AngleAxis(currentSteerAngle, Vector3.right);
                 Quaternion spinDelta  = Quaternion.AngleAxis(currentSpinAngle * entry.spinDirection, Vector3.forward);
-                
                 entry.transform.localRotation = entry.baseLocalRotation * steerDelta * spinDelta;
             }
             else
@@ -237,9 +250,15 @@ public class VehicleDriver : MonoBehaviour
             if (Keyboard.current.dKey.isPressed) steerInput = 1f;
             if (Keyboard.current.aKey.isPressed) steerInput = -1f;
 
-            // Visual steering always updates regardless of speed or grounding
             UpdateSteer(steerInput);
             UpdateSpin();
+
+            // Update speed readouts every frame for smooth GUI
+            Vector3 vel = rb.linearVelocity;
+            speedTotal   = vel.magnitude;
+            speedForward = Vector3.Dot(vel, transform.forward);
+            speedRight   = Vector3.Dot(vel, transform.right);
+            speedUp      = Vector3.Dot(vel, transform.up);
 
             if (Keyboard.current.qKey.wasPressedThisFrame ||
                 Keyboard.current.spaceKey.wasPressedThisFrame)
@@ -258,11 +277,9 @@ public class VehicleDriver : MonoBehaviour
         bool anyWheelGrounded = false;
         for (int i = 0; i < wheels.Count; i++)
         {
-            // Use buffered ray length so small bounces don't break ground contact
             bool grounded = GetRollDirection(wheels[i], groundRayLength + groundBuffer, out _, out _);
             if (grounded) anyWheelGrounded = true;
 
-            // Log whenever a wheel's grounded state changes
             if (!wheelGroundedState.TryGetValue(i, out bool wasGrounded) || wasGrounded != grounded)
             {
                 string wheelName = wheels[i].transform != null ? wheels[i].transform.name : $"Wheel {i}";
@@ -274,7 +291,7 @@ public class VehicleDriver : MonoBehaviour
         foreach (WheelEntry entry in wheels)
         {
             if (entry.wheelType != WheelSpinData.WheelType.Drive) continue;
-            if (!GetRollDirection(entry, out Vector3 rollDir, out _)) continue; // normal ray for drive
+            if (!GetRollDirection(entry, out Vector3 rollDir, out _)) continue;
 
             if (throttle != 0f && currentSpeed < maxSpeed)
             {
@@ -285,18 +302,37 @@ public class VehicleDriver : MonoBehaviour
 
         foreach (WheelEntry entry in wheels)
         {
-            // Buffered ray for downforce so it stays stable near ground
             if (!GetRollDirection(entry, groundRayLength + groundBuffer, out _, out _)) continue;
             rb.AddForceAtPosition(Vector3.down * wheelDownforce, entry.transform.position, ForceMode.Force);
         }
 
-        // Physics steering force only applied when moving AND grounded
         bool isMoving = currentSpeed > 0.5f;
 
         foreach (WheelEntry entry in wheels)
         {
             if (entry.wheelType != WheelSpinData.WheelType.Turn)
             {
+                Vector3 pointVel = rb.GetPointVelocity(entry.transform.position);
+                float raw = Vector3.Dot(pointVel, transform.forward);
+
+                // Push back when grounded and over the limit
+                bool wheelGrounded = GetRollDirection(entry, groundRayLength + groundBuffer, out _, out _);
+                if (wheelGrounded)
+                {
+                    if (raw > maxWheelForwardSpeed)
+                    {
+                        float overshoot = raw - maxWheelForwardSpeed;
+                        rb.AddForceAtPosition(-transform.forward * overshoot * speedLimitPushback, entry.transform.position, ForceMode.Force);
+                    }
+                    else if (raw < -maxWheelReverseSpeed)
+                    {
+                        float overshoot = Mathf.Abs(raw) - maxWheelReverseSpeed;
+                        rb.AddForceAtPosition(transform.forward * overshoot * speedLimitPushback, entry.transform.position, ForceMode.Force);
+                    }
+                }
+
+                pWheelForwardSpeed = raw;
+
                 if (Keyboard.current.pKey.isPressed)
                 {
                     Vector3 steerForce = transform.forward * steeringForce;
@@ -307,31 +343,67 @@ public class VehicleDriver : MonoBehaviour
             else
             {
                 float steerInput = 0f;
-                if (Keyboard.current.aKey.isPressed) steerInput = -1f;
-                if (Keyboard.current.dKey.isPressed) steerInput =  1f;
+                if (Keyboard.current.dKey.isPressed) steerInput = -1f;
+                if (Keyboard.current.aKey.isPressed) steerInput =  1f;
 
                 if (steerInput != 0f && isMoving && anyWheelGrounded)
                 {
-                    Vector3 steerForce = transform.right * steerInput * entry.spinDirection * steeringForce;
+                    Vector3 steerForce = transform.forward * steerInput  * steeringForce;
                     rb.AddForceAtPosition(steerForce, entry.transform.position, ForceMode.Force);
                     Debug.DrawRay(entry.transform.position, steerForce.normalized * 10f, Color.blue);
                 }
             }
         }
 
-        if (anyWheelGrounded)
-        {
-            if (throttle == 0f)
-            {
-                Vector3 flatVel = rb.linearVelocity;
-                flatVel.y = 0f;
-                rb.AddForce(-flatVel * 2f, ForceMode.Force);
-            }
+    }
 
-            Vector3 sidewaysVel = Vector3.Dot(rb.linearVelocity, transform.right) * transform.right;
-            rb.AddForce(-sidewaysVel * 20f, ForceMode.Force);
-        }
+    void OnGUI()
+    {
+        if (!isActive) return;
 
-        rb.angularDamping = anyWheelGrounded ? 5f : 0.05f;
+        bool pHeld = Keyboard.current.pKey.isPressed;
+
+        GUIStyle style = new GUIStyle(GUI.skin.box);
+        style.fontSize  = 16;
+        style.alignment = TextAnchor.MiddleLeft;
+        style.padding   = new RectOffset(10, 10, 8, 8);
+
+        // --- Wheel forward speed box (original) ---
+        string direction = pWheelForwardSpeed >  0.01f ? "▶ FORWARD"
+                         : pWheelForwardSpeed < -0.01f ? "◀ BACKWARD"
+                         : "— STOPPED";
+
+        string wheelLabel = $"Wheel → Forward\n{Mathf.Abs(pWheelForwardSpeed):F2} m/s  {direction}";
+
+        GUI.color = pHeld
+            ? new Color(1f, 0.4f, 0.4f, 0.95f)
+            : new Color(1f, 1f, 1f, 0.8f);
+
+        GUI.Box(new Rect(10, 10, 230, 60), wheelLabel, style);
+
+        // --- Vehicle speed box ---
+        GUI.color = new Color(0.2f, 0.2f, 0.2f, 0.85f);
+
+        string fwdDir = speedForward >  0.1f ? "▶"
+                      : speedForward < -0.1f ? "◀"
+                      : "—";
+
+        string rightDir = speedRight >  0.1f ? "▶"
+                        : speedRight < -0.1f ? "◀"
+                        : "—";
+
+        string upDir = speedUp >  0.1f ? "▲"
+                     : speedUp < -0.1f ? "▼"
+                     : "—";
+
+        string speedLabel =
+            $"Speed: {speedTotal:F1} m/s ({speedTotal * 3.6f:F1} km/h)\n" +
+            $"Fwd: {fwdDir} {Mathf.Abs(speedForward):F1}   " +
+            $"Side: {rightDir} {Mathf.Abs(speedRight):F1}   " +
+            $"Up: {upDir} {Mathf.Abs(speedUp):F1}";
+
+        GUI.Box(new Rect(10, 80, 380, 60), speedLabel, style);
+
+        GUI.color = Color.white;
     }
 }

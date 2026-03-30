@@ -780,15 +780,12 @@ MonoBehaviour:
   moveForce: 50000
   brakeForce: 3000
   maxSpeed: 30
-  maxWheelForwardSpeed: 5
-  maxWheelReverseSpeed: 5
-  speedLimitPushback: 50
   maxSteerAngle: 35
   steerSpeed: 120
-  steeringForce: 1500
+  steeringForce: 150
   groundRayLength: 15
   groundBuffer: 10
-  wheelDownforce: 0
+  wheelDownforce: 50
   wheelSpinRate: 200
   seat: {fileID: 557086387}
 --- !u!54 &1019182647
