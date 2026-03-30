@@ -4,6 +4,8 @@ using System.Collections.Generic;
 
 // .forward is the wheels side to side direction
 // this is used to prevent wheel drift
+// cars moving forward is for some reason .right
+// car side to side is .forward for some reason
 
 [RequireComponent(typeof(Rigidbody))]
 public class VehicleDriver : MonoBehaviour
@@ -256,8 +258,8 @@ public class VehicleDriver : MonoBehaviour
             // Update speed readouts every frame for smooth GUI
             Vector3 vel = rb.linearVelocity;
             speedTotal   = vel.magnitude;
-            speedForward = Vector3.Dot(vel, transform.forward);
-            speedRight   = Vector3.Dot(vel, transform.right);
+            speedForward = Vector3.Dot(vel, transform.right);
+            speedRight   = Vector3.Dot(vel, transform.forward);
             speedUp      = Vector3.Dot(vel, transform.up);
 
             if (Keyboard.current.qKey.wasPressedThisFrame ||
@@ -332,19 +334,13 @@ public class VehicleDriver : MonoBehaviour
                 }
 
                 pWheelForwardSpeed = raw;
-
-                if (Keyboard.current.pKey.isPressed)
-                {
-                    Vector3 steerForce = transform.forward * steeringForce;
-                    rb.AddForceAtPosition(steerForce * 10f, entry.transform.position, ForceMode.Force);
-                    Debug.DrawRay(entry.transform.position, steerForce.normalized * 20f, Color.red);
-                }
             }
             else
             {
                 float steerInput = 0f;
                 if (Keyboard.current.dKey.isPressed) steerInput = -1f;
                 if (Keyboard.current.aKey.isPressed) steerInput =  1f;
+                if (speedForward < 0f) steerInput *= -1f;
 
                 if (steerInput != 0f && isMoving && anyWheelGrounded)
                 {
@@ -399,7 +395,7 @@ public class VehicleDriver : MonoBehaviour
         string speedLabel =
             $"Speed: {speedTotal:F1} m/s ({speedTotal * 3.6f:F1} km/h)\n" +
             $"Fwd: {fwdDir} {Mathf.Abs(speedForward):F1}   " +
-            $"Side: {rightDir} {Mathf.Abs(speedRight):F1}   " +
+            $"Drift: {rightDir} {Mathf.Abs(speedRight):F1}   " +
             $"Up: {upDir} {Mathf.Abs(speedUp):F1}";
 
         GUI.Box(new Rect(10, 80, 380, 60), speedLabel, style);
