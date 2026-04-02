@@ -6,7 +6,7 @@ public class BlockPlacer : MonoBehaviour
     [Header("Block Settings")]
     public GameObject cubePrefab;
     public GameObject wheelPrefab;
-    public float placeDistance = 50f;
+    public float placeDistance = 70f;
     public float gridSize = 5f;
 
     [Header("Fallback Preview Position (when not hitting anything)")]

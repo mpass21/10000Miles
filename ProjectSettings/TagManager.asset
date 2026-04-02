@@ -6,6 +6,7 @@ TagManager:
   tags:
   - Block
   - Wheel
+  - Frame
   layers:
   - Default
   - TransparentFX

@@ -41,7 +41,6 @@ public class VehicleStarter : MonoBehaviour
 
     void Update()
     {
-        // Don't raycast for vehicles while mounted in one
         VehicleDriver currentlyMounted = GetMountedVehicle();
         if (currentlyMounted != null)
         {
@@ -59,10 +58,8 @@ public class VehicleStarter : MonoBehaviour
         }
     }
 
-    // Returns a VehicleDriver if this player is currently mounted in one
     VehicleDriver GetMountedVehicle()
     {
-        // Check if our transform parent chain contains a VehicleDriver seat
         Transform current = transform.parent;
         while (current != null)
         {
@@ -80,7 +77,7 @@ public class VehicleStarter : MonoBehaviour
 
         if (Physics.Raycast(ray, out hit, rayDistance))
         {
-            if (hit.collider.CompareTag("Block"))
+            if (hit.collider.CompareTag("Block") || hit.collider.CompareTag("Frame"))
             {
                 GameObject hitBlock = hit.collider.GetComponentInParent<Rigidbody>()?.gameObject;
 
